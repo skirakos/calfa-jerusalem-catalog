@@ -1,0 +1,9 @@
+.DS_Store
+__pycache__/
+*.pyc
+*.zip
+
+# Never put the working extraction pipeline in this repository
+jerusalem_step1_output/
+jerusalem_boundary_full/
+jerusalem_review/
