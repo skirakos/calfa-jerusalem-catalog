@@ -1,6 +1,7 @@
 const app=document.querySelector("#app");
 let DATA=null;
 let state={q:"",volume:"",material:"",script:"",place:""};
+const GITHUB_REPO="skirakos/calfa-jerusalem-catalog";
 
 const GROUPS=[
 ["Identification",["no_notice","numero","titre","genre","genre_id"]],
@@ -23,7 +24,6 @@ function route(){
   const m=h.match(/^#\/record\/(.+)$/);
   return m?{type:"record",id:decodeURIComponent(m[1])}:{type:"search"};
 }
-
 function matches(r){
   if(state.volume&&r.volume!==state.volume)return false;
   if(state.material&&!norm(r.fields.details_matiere).includes(norm(state.material)))return false;
@@ -32,7 +32,6 @@ function matches(r){
   const terms=norm(state.q).split(" ").filter(Boolean);
   return terms.every(t=>norm(r.searchableText).includes(t));
 }
-
 function score(r){
   let s=0;
   for(const t of norm(state.q).split(" ").filter(Boolean)){
@@ -45,11 +44,8 @@ function score(r){
   }
   return s;
 }
-
 function results(){
-  return DATA.records
-    .filter(matches)
-    .map(r=>({r,s:score(r)}))
+  return DATA.records.filter(matches).map(r=>({r,s:score(r)}))
     .sort((a,b)=>b.s-a.s||a.r.id.localeCompare(b.r.id,undefined,{numeric:true}))
     .map(x=>x.r);
 }
@@ -57,49 +53,28 @@ function results(){
 function renderSearch(){
   const rs=results();
   const volumes=[...new Set(DATA.records.map(r=>r.volume))].sort();
-
   app.innerHTML=`
   <section class="hero">
     <div class="kicker">CALFA · Jerusalem collection</div>
     <h1>Jerusalem Manuscript Catalogue</h1>
     <p>Search the catalogue by manuscript ID, number, title, date, copyist, place, material, script, or contents.</p>
   </section>
-
   <div class="wrap">
     <section class="searchbox">
       <div class="searchrow">
         <input id="q" value="${esc(state.q)}" placeholder="Search J3171, title, copyist, place, contents…">
         <button id="clear" class="btn">Clear</button>
       </div>
-
-      <details class="advanced">
-        <summary>Advanced search</summary>
-        <div class="filters">
-          <label>Volume
-            <select id="volume">
-              <option value="">All volumes</option>
-              ${volumes.map(v=>`<option ${v===state.volume?"selected":""}>${esc(v)}</option>`).join("")}
-            </select>
-          </label>
-          <label>Material<input id="material" value="${esc(state.material)}" placeholder="e.g. մագաղաթ"></label>
-          <label>Script<input id="script" value="${esc(state.script)}" placeholder="e.g. բոլորգիր"></label>
-          <label>Place<input id="place" value="${esc(state.place)}" placeholder="Place of copying"></label>
-        </div>
-      </details>
-
+      <details class="advanced"><summary>Advanced search</summary><div class="filters">
+        <label>Volume<select id="volume"><option value="">All volumes</option>${volumes.map(v=>`<option ${v===state.volume?"selected":""}>${esc(v)}</option>`).join("")}</select></label>
+        <label>Material<input id="material" value="${esc(state.material)}" placeholder="e.g. մագաղաթ"></label>
+        <label>Script<input id="script" value="${esc(state.script)}" placeholder="e.g. բոլորգիր"></label>
+        <label>Place<input id="place" value="${esc(state.place)}" placeholder="Place of copying"></label>
+      </div></details>
       <div class="count">${rs.length.toLocaleString()} matching record${rs.length===1?"":"s"} · ${DATA.records.length.toLocaleString()} published</div>
     </section>
-
     <section class="compact-results">
-      <div class="result-head">
-        <div>ID</div>
-        <div>Source</div>
-        <div>Number</div>
-        <div>Title</div>
-        <div>Date</div>
-        <div></div>
-      </div>
-
+      <div class="result-head"><div>ID</div><div>Source</div><div>Number</div><div>Title</div><div>Date</div><div></div></div>
       ${rs.slice(0,300).map(r=>`
         <article class="result-row" data-id="${esc(r.id)}">
           <div class="rid">${esc(r.id)}</div>
@@ -108,11 +83,9 @@ function renderSearch(){
           <div class="title-cell">${esc(r.title||"—")}</div>
           <div class="date-cell">${esc(r.date||"—")}</div>
           <div class="view-cell"><button class="link">View full →</button></div>
-        </article>
-      `).join("") || `<div class="empty"><h2>No matching records</h2></div>`}
+        </article>`).join("") || `<div class="empty"><h2>No matching records</h2></div>`}
     </section>
   </div>`;
-
   const rerender=()=>renderSearch();
   document.querySelector("#q").oninput=e=>{state.q=e.target.value;rerender()};
   document.querySelector("#clear").onclick=()=>{state={q:"",volume:"",material:"",script:"",place:""};rerender()};
@@ -123,54 +96,101 @@ function renderSearch(){
   document.querySelectorAll("[data-id]").forEach(el=>el.onclick=()=>location.hash="#/record/"+encodeURIComponent(el.dataset.id));
 }
 
+function openTypoModal(r){
+  const fields=Object.keys(r.fields||{}).filter(k=>!k.startsWith("_")).sort((a,b)=>label(a).localeCompare(label(b)));
+  const modal=document.createElement("div");
+  modal.className="report-modal-backdrop";
+  modal.innerHTML=`
+    <div class="report-modal">
+      <div class="report-modal-head">
+        <div><div class="kicker">${esc(r.id)} · Jerusalem</div><h2>Report a typo or record problem</h2></div>
+        <button id="report-close" class="btn">Close</button>
+      </div>
+      <p class="report-help">Select the affected field and describe the correction. GitHub will open with the manuscript information already filled in.</p>
+      <label class="report-label">Field
+        <select id="report-field">${fields.map(f=>`<option value="${esc(f)}">${esc(label(f))}</option>`).join("")}</select>
+      </label>
+      <label class="report-label">Current value<textarea id="report-current" readonly></textarea></label>
+      <label class="report-label">Suggested correction / problem<textarea id="report-message" placeholder="Describe the typo, missing text, incorrect field, or other problem…"></textarea></label>
+      <a id="report-submit" class="report-submit" target="_blank" rel="noreferrer">Continue to GitHub</a>
+      <div class="report-foot">The catalogue is not changed automatically. The report is submitted as a GitHub issue for review.</div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  const fieldEl=modal.querySelector("#report-field");
+  const currentEl=modal.querySelector("#report-current");
+  const messageEl=modal.querySelector("#report-message");
+  const submitEl=modal.querySelector("#report-submit");
+
+  function update(){
+    const field=fieldEl.value;
+    const current=show(r.fields[field]);
+    currentEl.value=current;
+    const body=[
+      "## Catalogue record","",
+      "- Source: Jerusalem",
+      `- Manuscript ID: ${r.id}`,
+      `- Number: ${r.number||r.notice||""}`,
+      `- Volume: ${r.volume||""}`,"",
+      "## Field","",`${label(field)} (${field})`,"",
+      "## Current value","","```text",current,"```","",
+      "## Suggested correction / problem","",messageEl.value||"(Please describe the correction.)","",
+      "## Catalogue record URL","",location.href,"",
+      "## Source image","",
+      ...(r.images?.length?r.images:["Source image URL not yet configured"]),"",
+      "---","Submitted from the CALFA Jerusalem Manuscript Catalogue."
+    ].join("\n");
+    const qs=new URLSearchParams({
+      template:"catalog-typo.md",
+      title:`[Catalogue typo] ${r.id} — ${label(field)}`,
+      body
+    });
+    submitEl.href=`https://github.com/${GITHUB_REPO}/issues/new?${qs.toString()}`;
+  }
+
+  fieldEl.onchange=update;
+  messageEl.oninput=update;
+  modal.querySelector("#report-close").onclick=()=>modal.remove();
+  modal.onclick=e=>{if(e.target===modal)modal.remove()};
+  update();
+}
+
 function renderRecord(r){
   const grouped=new Set(GROUPS.flatMap(x=>x[1]));
   const other=Object.keys(r.fields).filter(k=>!k.startsWith("_")&&!grouped.has(k)&&show(r.fields[k]));
-
   app.innerHTML=`
   <div class="record">
-    <div class="toolbar"><button id="back" class="btn">← Back to results</button></div>
+    <div class="toolbar">
+      <button id="back" class="btn">← Back to results</button>
+      <button id="report-typo" class="btn report-button">Report a typo</button>
+    </div>
     <header class="recordhead">
       <div class="manuscript-id">${esc(r.id)}</div>
       <div class="kicker">Jerusalem · ${esc(r.volume)} · Catalogue number ${esc(r.number||r.notice)}</div>
       <h1>${esc(r.title||"Untitled notice")}</h1>
       ${r.date?`<div class="record-date">${esc(r.date)}</div>`:""}
     </header>
-
     <div class="grid">
       <main>
         ${GROUPS.map(([g,fs])=>{
           const xs=fs.map(f=>[f,show(r.fields[f])]).filter(([,v])=>v);
-          return xs.length?`
-          <section class="section">
-            <h2>${esc(g)}</h2>
-            <dl>${xs.map(([f,v])=>`<div class="row"><dt>${esc(label(f))}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>
-          </section>`:"";
+          return xs.length?`<section class="section"><h2>${esc(g)}</h2><dl>${xs.map(([f,v])=>`<div class="row"><dt>${esc(label(f))}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl></section>`:"";
         }).join("")}
-
-        ${other.length?`
-        <section class="section">
-          <h2>Other information</h2>
-          <dl>${other.map(f=>`<div class="row"><dt>${esc(label(f))}</dt><dd>${esc(show(r.fields[f]))}</dd></div>`).join("")}</dl>
-        </section>`:""}
+        ${other.length?`<section class="section"><h2>Other information</h2><dl>${other.map(f=>`<div class="row"><dt>${esc(label(f))}</dt><dd>${esc(show(r.fields[f]))}</dd></div>`).join("")}</dl></section>`:""}
       </main>
-
       <aside class="source">
         <h2>Source images</h2>
-        ${r.images?.length
-          ? `<div class="imgs">${r.images.map((src,i)=>`<a href="${esc(src)}" target="_blank"><img loading="lazy" src="${esc(src)}" alt="Source page ${i+1}"></a>`).join("")}</div>`
-          : `<div class="empty">Source image URLs are not configured yet.</div>`
-        }
+        ${r.images?.length?`<div class="imgs">${r.images.map((src,i)=>`<a href="${esc(src)}" target="_blank"><img loading="lazy" src="${esc(src)}" alt="Source page ${i+1}"></a>`).join("")}</div>`:`<div class="empty">Source image URLs are not configured yet.</div>`}
       </aside>
     </div>
   </div>`;
   document.querySelector("#back").onclick=()=>location.hash="#/";
+  document.querySelector("#report-typo").onclick=()=>openTypoModal(r);
 }
 
 function renderAbout(){
-  app.innerHTML=`<section class="about"><h1>About</h1><p>This is the public searchable interface for the CALFA Jerusalem manuscript catalogue. Jerusalem manuscript IDs use the prefix <strong>J</strong>, for example <strong>J3171</strong>.</p></section>`;
+  app.innerHTML=`<section class="about"><h1>About</h1><p>This is the public searchable interface for the CALFA Jerusalem manuscript catalogue. Jerusalem manuscript IDs use the prefix <strong>J</strong>.</p><p>Use <strong>Report a typo</strong> on a manuscript record to submit a correction as a GitHub issue.</p></section>`;
 }
-
 function render(){
   const r=route();
   if(r.type==="about")return renderAbout();
@@ -180,7 +200,6 @@ function render(){
   }
   renderSearch();
 }
-
 async function init(){
   const res=await fetch("./data/catalog.json");
   DATA=await res.json();
